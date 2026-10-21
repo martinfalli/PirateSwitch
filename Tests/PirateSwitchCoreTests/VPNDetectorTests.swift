@@ -1,5 +1,5 @@
 import XCTest
-@testable import DownloadSwitchCore
+@testable import PirateSwitchCore
 
 final class VPNDetectorTests: XCTestCase {
     let wifi = NetworkInterface(name: "en0", isUp: true, ipv4: ["192.168.1.20"])

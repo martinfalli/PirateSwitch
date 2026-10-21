@@ -1,6 +1,6 @@
 import Foundation
 import UserNotifications
-import DownloadSwitchCore
+import PirateSwitchCore
 
 enum Notifier {
     /// UNUserNotificationCenter crashes outside an app bundle (e.g. `swift run`).

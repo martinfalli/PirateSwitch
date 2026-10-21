@@ -7,7 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # Xcode 26+ is needed to compile the Liquid Glass (.icon) app icon.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -15,12 +16,29 @@ jobs:
         run: swift test
 
       - name: Build app
-        run: scripts/build-app.sh
+        run: |
+          scripts/build-app.sh
+          test -f build/PirateSwitch.app/Contents/Resources/Assets.car
+          test -f build/PirateSwitch.app/Contents/Resources/AppIcon.icns
+
+      - name: Render icon previews
+        run: |
+          ICTOOL="$(dirname "$(xcode-select -p)")/Applications/Icon Composer.app/Contents/Executables/ictool"
+          mkdir -p build/icon-preview
+          for rendition in Default Dark ClearDark TintedDark; do
+            "$ICTOOL" "$PWD/Icon/AppIcon.icon" --export-image --output-file "build/icon-preview/$rendition.png" \
+              --platform macOS --rendition "$rendition" --width 512 --height 512 --scale 1
+          done
 
       - name: Package
-        run: ditto -c -k --keepParent "build/Download Switch.app" build/DownloadSwitch.zip
+        run: ditto -c -k --keepParent build/PirateSwitch.app build/PirateSwitch.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DownloadSwitch
-          path: build/DownloadSwitch.zip
+          name: PirateSwitch
+          path: build/PirateSwitch.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: icon-preview
+          path: build/icon-preview

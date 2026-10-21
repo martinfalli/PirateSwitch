@@ -1,7 +1,7 @@
 import AppKit
 import Network
 import ServiceManagement
-import DownloadSwitchCore
+import PirateSwitchCore
 
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -23,8 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var interfaces: [NetworkInterface] = []
     private var vpn: VPNStatus?
-    private var iconSymbol = ""
     private var poweringOff = false
+
+    private let flagIcon = AppDelegate.menuBarIcon("MenuBarFlag", fallback: "flag.fill")
+    private let slashedFlagIcon = AppDelegate.menuBarIcon("MenuBarFlagSlash", fallback: "flag.slash.fill")
 
     // MARK: - Lifecycle
 
@@ -44,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pathMonitor.pathUpdateHandler = { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
         }
-        pathMonitor.start(queue: DispatchQueue(label: "DownloadSwitch.path"))
+        pathMonitor.start(queue: DispatchQueue(label: "PirateSwitch.path"))
         appsObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
             DispatchQueue.main.async { self?.refresh() }
         }
@@ -103,26 +105,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Status item
 
-    private var iconState: (symbol: String, description: String) {
-        if !settings.enabled { return ("shield.slash", "Kill switch off") }
-        if vpn != nil { return ("lock.shield", "VPN connected") }
-        return ("xmark.shield", "VPN down, Transmission cut off")
+    /// Pirate flag artwork bundled as a PDF; SF Symbols when run unbundled (`swift run`).
+    private static func menuBarIcon(_ name: String, fallback: String) -> NSImage? {
+        let image = Bundle.main.image(forResource: name)
+        image?.size = NSSize(width: 18, height: 18)
+        let icon = image ?? NSImage(systemSymbolName: fallback, accessibilityDescription: nil)
+        icon?.isTemplate = true
+        return icon
     }
 
     private func updateIcon() {
-        let (symbol, description) = iconState
         guard let button = statusItem.button else { return }
-        button.toolTip = "Download Switch: \(description)"
-        guard symbol != iconSymbol else { return }
-        iconSymbol = symbol
-
-        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description) {
-            image.isTemplate = true
-            button.image = image
-            button.title = ""
+        let description: String
+        if !settings.enabled {
+            description = "Kill switch off"
+        } else if vpn != nil {
+            description = "VPN connected"
         } else {
-            button.image = nil
-            button.title = settings.enabled ? (vpn != nil ? "VPN" : "BLOCK") : "OFF"
+            description = "VPN down, Transmission cut off"
+        }
+        button.toolTip = "PirateSwitch: \(description)"
+        button.setAccessibilityLabel(description)
+
+        // Flag while protected, struck through while the VPN is down, greyed out when off.
+        let image = settings.enabled && vpn == nil ? slashedFlagIcon : flagIcon
+        if button.image !== image { button.image = image }
+        if image == nil { button.title = "☠︎" }
+        if button.appearsDisabled == settings.enabled {
+            button.appearsDisabled = !settings.enabled
         }
     }
 
@@ -148,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Launch at Login", #selector(toggleLaunchAtLogin),
                           checked: SMAppService.mainApp.status == .enabled))
         menu.addItem(.separator())
-        menu.addItem(item("Quit Download Switch", #selector(quit), key: "q"))
+        menu.addItem(item("Quit PirateSwitch", #selector(quit), key: "q"))
     }
 
     private var vpnStatusText: String {

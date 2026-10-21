@@ -5,15 +5,19 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>DownloadSwitch</string>
+	<string>PirateSwitch</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.martinfalli.DownloadSwitch</string>
+	<string>com.martinfalli.PirateSwitch</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Download Switch</string>
+	<string>PirateSwitch</string>
 	<key>CFBundleDisplayName</key>
-	<string>Download Switch</string>
+	<string>PirateSwitch</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -1,4 +1,4 @@
-# Download Switch
+# PirateSwitch
 
 A small macOS menu bar app that cuts [Transmission](https://transmissionbt.com) off the internet whenever your VPN is down. Only Transmission is affected, and it isn't quit: it just can't send or receive a single packet outside the VPN.
 
@@ -16,31 +16,33 @@ IPv6 is bound to an address that never exists, so Transmission can't use IPv6 at
 **Restarts.** Transmission reads its binding only at launch, so it's restarted in two cases:
 
 - The VPN comes back with a different address. Many WireGuard-based VPNs keep the same one.
-- Transmission was started without the binding: before Download Switch was installed, or while the VPN was down.
+- Transmission was started without the binding: before PirateSwitch was installed, or while the VPN was down.
 
 The restart only happens with the VPN up, and the old Transmission can't reach anything in the meantime.
 
 The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp`, `tun`, `wg`…) that currently carries your internet traffic. If that guesses wrong, pick the interface under **VPN Interface** in the menu.
 
-| Icon | Meaning |
+| Menu bar icon | Meaning |
 | --- | --- |
-| Shield with lock | VPN connected, Transmission bound to it |
-| Shield with ✕ | VPN down, Transmission cut off |
-| Shield with slash | Kill switch turned off |
+| Pirate flag | VPN connected, Transmission bound to it |
+| Pirate flag, struck through | VPN down, Transmission cut off |
+| Pirate flag, greyed out | Kill switch turned off |
 
 Notes:
-- Quitting Download Switch unfreezes Transmission, but the binding stays: it still only works over the same VPN address. Turn **Kill Switch** off to give Transmission normal internet again.
+- Quitting PirateSwitch unfreezes Transmission, but the binding stays: it still only works over the same VPN address. Turn **Kill Switch** off to give Transmission normal internet again.
 - On logout/shutdown a frozen Transmission is killed rather than resumed, so it can't contact anything outside the VPN on its way out.
 
 ## Install
 
-Requires macOS 13+ and Xcode (or the Xcode command line tools).
+Requires macOS 13+ and Xcode. Xcode 26 or later also compiles the Liquid Glass app icon; older versions build the app with a generic icon.
 
 ```sh
 scripts/build-app.sh --install
 ```
 
-This builds `build/Download Switch.app`, copies it to `/Applications` and opens it. It turns on **Launch at Login** on first run (toggle it in the menu).
+This builds `build/PirateSwitch.app`, copies it to `/Applications` and opens it. It turns on **Launch at Login** on first run (toggle it in the menu).
+
+Upgrading from Download Switch (the old name): the script removes the old app. Its login item may linger in **System Settings → General → Login Items**; remove it there.
 
 A prebuilt zip is also attached to each [GitHub Actions run](../../actions). It's ad-hoc signed, so macOS will block it the first time: open it, then allow it in **System Settings → Privacy & Security → Open Anyway**.
 
@@ -56,8 +58,10 @@ defaults delete org.m0k.transmission BindAddressIPv6
 ## Development
 
 ```sh
-swift test                 # decision logic tests
-swift run DownloadSwitch   # run without bundling (no notifications)
+swift test               # decision logic tests
+swift run PirateSwitch   # run without bundling (no notifications, SF Symbol icon)
 ```
 
-`Sources/DownloadSwitchCore` holds the pure logic (VPN detection, kill switch state machine); `Sources/DownloadSwitch` is the AppKit menu bar app.
+`Sources/PirateSwitchCore` holds the pure logic (VPN detection, kill switch state machine); `Sources/PirateSwitch` is the AppKit menu bar app.
+
+The artwork is generated from simple shapes by `Icon/generate.py` (`pip install shapely cairosvg`): the Liquid Glass app icon layers in `Icon/AppIcon.icon` and the menu bar templates `Resources/MenuBarFlag*.pdf`. Open `Icon/AppIcon.icon` in Icon Composer to tweak the glass effects.

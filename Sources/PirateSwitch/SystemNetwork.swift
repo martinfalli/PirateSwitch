@@ -1,5 +1,5 @@
 import Darwin
-import DownloadSwitchCore
+import PirateSwitchCore
 
 /// Reads the live network state from the kernel.
 enum SystemNetwork {

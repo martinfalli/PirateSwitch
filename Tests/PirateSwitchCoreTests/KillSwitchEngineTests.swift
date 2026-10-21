@@ -1,5 +1,5 @@
 import XCTest
-@testable import DownloadSwitchCore
+@testable import PirateSwitchCore
 
 final class KillSwitchEngineTests: XCTestCase {
     let vpn = VPNStatus(interface: "utun4", ipv4: "10.64.0.2")

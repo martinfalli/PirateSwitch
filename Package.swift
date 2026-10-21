@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "DownloadSwitch",
+    name: "PirateSwitch",
     platforms: [.macOS(.v13)],
     targets: [
         // Pure decision logic, no AppKit — unit tested.
-        .target(name: "DownloadSwitchCore"),
+        .target(name: "PirateSwitchCore"),
         // Menu bar app: system calls + UI.
         .executableTarget(
-            name: "DownloadSwitch",
-            dependencies: ["DownloadSwitchCore"]
+            name: "PirateSwitch",
+            dependencies: ["PirateSwitchCore"]
         ),
         .testTarget(
-            name: "DownloadSwitchCoreTests",
-            dependencies: ["DownloadSwitchCore"]
+            name: "PirateSwitchCoreTests",
+            dependencies: ["PirateSwitchCore"]
         ),
     ]
 )

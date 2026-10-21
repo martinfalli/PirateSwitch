@@ -1,5 +1,5 @@
 import AppKit
-import DownloadSwitchCore
+import PirateSwitchCore
 
 /// Starts and stops Transmission.app.
 enum Transmission {

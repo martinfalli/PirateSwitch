@@ -1,5 +1,5 @@
 import Foundation
-import DownloadSwitchCore
+import PirateSwitchCore
 
 /// The app's own preferences.
 struct Settings {
