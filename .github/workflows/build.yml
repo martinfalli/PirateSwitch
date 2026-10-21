@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: swift test
+
+      - name: Build app
+        run: scripts/build-app.sh
+
+      - name: Package
+        run: ditto -c -k --keepParent "build/Download Switch.app" build/DownloadSwitch.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DownloadSwitch
+          path: build/DownloadSwitch.zip
