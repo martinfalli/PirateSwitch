@@ -28,13 +28,15 @@ The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp
 | Pirate flag, struck through | VPN down, Transmission cut off |
 | Pirate flag, greyed out | Kill switch turned off |
 
+Under **Menu Bar Icon** you can switch between the flag with its pole and the flag alone.
+
 Notes:
 - Quitting PirateSwitch unfreezes Transmission, but the binding stays: it still only works over the same VPN address. Turn **Kill Switch** off to give Transmission normal internet again.
 - On logout/shutdown a frozen Transmission is killed rather than resumed, so it can't contact anything outside the VPN on its way out.
 
 ## Install
 
-Requires macOS 13+ and Xcode. Xcode 26 or later also compiles the Liquid Glass app icon; older versions build the app with a generic icon.
+Requires macOS 13+ and Xcode. With Xcode 26 or later selected (`xcode-select -p`), the app gets the Liquid Glass icon; otherwise it gets a flat version of the same icon.
 
 ```sh
 scripts/build-app.sh --install
@@ -64,4 +66,4 @@ swift run PirateSwitch   # run without bundling (no notifications, SF Symbol ico
 
 `Sources/PirateSwitchCore` holds the pure logic (VPN detection, kill switch state machine); `Sources/PirateSwitch` is the AppKit menu bar app.
 
-The artwork is generated from simple shapes by `Icon/generate.py` (`pip install shapely cairosvg`): the Liquid Glass app icon layers in `Icon/AppIcon.icon` and the menu bar templates `Resources/MenuBarFlag*.pdf`. Open `Icon/AppIcon.icon` in Icon Composer to tweak the glass effects.
+The artwork is generated from simple shapes by `Icon/generate.py` (`pip install shapely cairosvg pillow`): the Liquid Glass app icon layers in `Icon/AppIcon.icon`, the flat fallback `Resources/AppIcon.icns` and the menu bar templates `Resources/MenuBarFlag*.pdf`. Open `Icon/AppIcon.icon` in Icon Composer to tweak the glass effects.

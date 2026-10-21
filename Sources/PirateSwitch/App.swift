@@ -25,8 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var vpn: VPNStatus?
     private var poweringOff = false
 
-    private let flagIcon = AppDelegate.menuBarIcon("MenuBarFlag", fallback: "flag.fill")
-    private let slashedFlagIcon = AppDelegate.menuBarIcon("MenuBarFlagSlash", fallback: "flag.slash.fill")
+    private var iconCache: [String: NSImage] = [:]
 
     // MARK: - Lifecycle
 
@@ -105,12 +104,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Status item
 
-    /// Pirate flag artwork bundled as a PDF; SF Symbols when run unbundled (`swift run`).
-    private static func menuBarIcon(_ name: String, fallback: String) -> NSImage? {
+    /// Pirate flag artwork bundled as PDFs; SF Symbols when run unbundled (`swift run`).
+    private func menuBarIcon(_ style: MenuBarIconStyle, slashed: Bool) -> NSImage? {
+        let name = (style == .flagOnly ? "MenuBarFlagOnly" : "MenuBarFlag") + (slashed ? "Slash" : "")
+        if let icon = iconCache[name] { return icon }
         let image = Bundle.main.image(forResource: name)
         image?.size = NSSize(width: 18, height: 18)
-        let icon = image ?? NSImage(systemSymbolName: fallback, accessibilityDescription: nil)
+        let icon = image ?? NSImage(systemSymbolName: slashed ? "flag.slash.fill" : "flag.fill",
+                                    accessibilityDescription: nil)
         icon?.isTemplate = true
+        iconCache[name] = icon
         return icon
     }
 
@@ -128,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.setAccessibilityLabel(description)
 
         // Flag while protected, struck through while the VPN is down, greyed out when off.
-        let image = settings.enabled && vpn == nil ? slashedFlagIcon : flagIcon
+        let image = menuBarIcon(settings.menuBarIcon, slashed: settings.enabled && vpn == nil)
         if button.image !== image { button.image = image }
         if image == nil { button.title = "☠︎" }
         if button.appearsDisabled == settings.enabled {
@@ -150,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Freeze Transmission While VPN Is Down", #selector(toggleFreeze),
                           checked: settings.freezeWhileDown))
         menu.addItem(interfaceMenu())
+        menu.addItem(iconStyleMenu())
         menu.addItem(.separator())
 
         let open = item("Open Transmission", #selector(openTransmission))
@@ -202,6 +206,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return parent
     }
 
+    private func iconStyleMenu() -> NSMenuItem {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for (style, title) in [(MenuBarIconStyle.flagWithPole, "Flag with Pole"), (MenuBarIconStyle.flagOnly, "Flag Only")] {
+            let row = item(title, #selector(selectIconStyle(_:)), checked: settings.menuBarIcon == style)
+            row.representedObject = style.rawValue
+            row.image = menuBarIcon(style, slashed: false)
+            submenu.addItem(row)
+        }
+
+        let parent = NSMenuItem(title: "Menu Bar Icon", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
+    }
+
     private func label(_ title: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
@@ -230,6 +249,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func selectInterface(_ sender: NSMenuItem) {
         settings.vpnSelection = (sender.representedObject as? String).map(VPNSelection.interface) ?? .automatic
         refresh()
+    }
+
+    @objc private func selectIconStyle(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let style = MenuBarIconStyle(rawValue: raw)
+        else { return }
+        settings.menuBarIcon = style
+        updateIcon()
     }
 
     @objc private func openTransmission() {

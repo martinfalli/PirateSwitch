@@ -7,8 +7,8 @@ on:
 
 jobs:
   build:
-    # Xcode 26+ is needed to compile the Liquid Glass (.icon) app icon.
-    runs-on: macos-26
+    # Newest macOS/Xcode GitHub offers (Xcode 26+ compiles the Liquid Glass icon).
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 

@@ -3,16 +3,20 @@
 
 Outputs:
   Icon/AppIcon.icon/Assets/flag.svg, pole.svg   Liquid Glass app icon layers
-  Resources/MenuBarFlag.pdf, MenuBarFlagSlash.pdf   menu bar template images
+  Resources/AppIcon.icns                          flat fallback for builds without Xcode 26
+  Resources/MenuBarFlag*.pdf                      menu bar template images
 
-Requires: pip install shapely cairosvg
+Requires: pip install shapely cairosvg pillow
 Usage:    python3 Icon/generate.py [preview-dir]
 """
 import math
 import os
 import sys
 
+import io
+
 import cairosvg
+from PIL import Image
 from shapely import affinity
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
@@ -153,15 +157,46 @@ def app_icon():
     return (body - cut) | (keep & body), pole
 
 
-def menu_bar_glyph(slash):
+def squircle(cx, cy, half, n=5, steps=256):
+    """Superellipse approximating the macOS icon shape."""
+    pts = []
+    for i in range(steps):
+        t = 2 * math.pi * i / steps
+        c, s = math.cos(t), math.sin(t)
+        pts.append((cx + half * math.copysign(abs(c) ** (2 / n), c),
+                    cy + half * math.copysign(abs(s) ** (2 / n), s)))
+    return Polygon(pts)
+
+
+def flat_icon_svg(flag_layer, pole_layer):
+    """The same artwork without the glass, on a macOS-shaped tile (824pt on a
+    1024 canvas, like Apple's icon template), for the .icns fallback."""
+    tile = path_data(squircle(512, 512, 412), 1)
+    scale = 824 / 1024
+    art = affinity.scale(unary_union([flag_layer, pole_layer]), scale, scale, origin=(512, 512))
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
+            '<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">'
+            '<stop offset="0" stop-color="#2B2B2E"/><stop offset="0.7" stop-color="#000000"/>'
+            '</linearGradient></defs>'
+            f'<path fill="url(#bg)" d="{tile}"/>'
+            f'<path fill="none" stroke="#FFFFFF" stroke-opacity="0.2" stroke-width="4" d="{tile}"/>'
+            f'<path fill="#FFFFFF" fill-rule="evenodd" d="{path_data(art, 1)}"/>'
+            '</svg>\n')
+
+
+def menu_bar_glyph(slash, pole):
     """36x36 canvas (18pt @2x), simplified for legibility at menu bar size."""
-    pole = unary_union([
-        LineString([(5.2, 5), (5.2, 33.5)]).buffer(1.35, cap_style=1),
-        Point(5.2, 4.2).buffer(2.1, 24),
-    ])
-    body = flag(6.2, 33.2, 6.5, 25, 1.6)
-    cut, keep = jolly_roger(19.8, 15.6, 10, teeth=False, bone_length=1.8, bone_width=0.22)
-    glyph = (body - cut) | (keep & body) | pole
+    if pole:
+        body = flag(6.2, 33.2, 6.5, 25, 1.6)
+        cut, keep = jolly_roger(19.8, 15.6, 10, teeth=False, bone_length=1.8, bone_width=0.22)
+        glyph = (body - cut) | (keep & body) | unary_union([
+            LineString([(5.2, 5), (5.2, 33.5)]).buffer(1.35, cap_style=1),
+            Point(5.2, 4.2).buffer(2.1, 24),
+        ])
+    else:
+        body = flag(1.5, 34.5, 7, 29, 1.8)
+        cut, keep = jolly_roger(18, 18, 11.5, teeth=False, bone_length=1.8, bone_width=0.22)
+        glyph = (body - cut) | (keep & body)
     if slash:
         line = LineString([(3, 3.5), (33, 33.5)])
         glyph = (glyph - line.buffer(3.4, cap_style=2)) | line.buffer(1.5, cap_style=1)
@@ -176,19 +211,23 @@ def main():
     write(os.path.join(assets, "flag.svg"), svg(1024, [(flag_layer, "#FFFFFF")]))
     write(os.path.join(assets, "pole.svg"), svg(1024, [(pole_layer, "#FFFFFF")]))
 
-    for name, slash in (("MenuBarFlag", False), ("MenuBarFlagSlash", True)):
-        data = svg(36, [(menu_bar_glyph(slash), "#000000")], digits=2)
-        cairosvg.svg2pdf(bytestring=data.encode(), write_to=os.path.join(ROOT, "Resources", name + ".pdf"),
-                         output_width=18, output_height=18)
-        if preview:
-            for px in (18, 36, 144):
-                cairosvg.svg2png(bytestring=data.encode(), write_to=os.path.join(preview, f"{name}-{px}.png"),
-                                 output_width=px, output_height=px, background_color="white")
+    flat = cairosvg.svg2png(bytestring=flat_icon_svg(flag_layer, pole_layer).encode())
+    icon = Image.open(io.BytesIO(flat))
+    icon.save(os.path.join(ROOT, "Resources", "AppIcon.icns"))
+
+    for base, pole in (("MenuBarFlag", True), ("MenuBarFlagOnly", False)):
+        for slash in (False, True):
+            name = base + ("Slash" if slash else "")
+            data = svg(36, [(menu_bar_glyph(slash, pole), "#000000")], digits=2)
+            cairosvg.svg2pdf(bytestring=data.encode(), write_to=os.path.join(ROOT, "Resources", name + ".pdf"),
+                             output_width=18, output_height=18)
+            if preview:
+                for px in (18, 36, 144):
+                    cairosvg.svg2png(bytestring=data.encode(), write_to=os.path.join(preview, f"{name}-{px}.png"),
+                                     output_width=px, output_height=px, background_color="white")
 
     if preview:
-        flat = svg(1024, [(pole_layer, "#FFFFFF"), (flag_layer, "#FFFFFF")], background="#000000")
-        cairosvg.svg2png(bytestring=flat.encode(), write_to=os.path.join(preview, "AppIcon-flat.png"),
-                         output_width=512, output_height=512)
+        icon.resize((512, 512), Image.LANCZOS).save(os.path.join(preview, "AppIcon-flat.png"))
 
 
 if __name__ == "__main__":
