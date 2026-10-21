@@ -1,13 +1,13 @@
 #!/bin/bash
-# Builds PirateSwitch.app (universal, ad-hoc signed) into ./build.
+# Builds PirateSwitch.app (Apple Silicon, ad-hoc signed) into ./build.
 # Usage: scripts/build-app.sh [--install]   (--install copies it to /Applications)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP="$PWD/build/PirateSwitch.app"
 
-swift build -c release --arch arm64 --arch x86_64
-BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+swift build -c release --arch arm64
+BIN_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

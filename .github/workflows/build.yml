@@ -20,6 +20,7 @@ jobs:
           scripts/build-app.sh
           test -f build/PirateSwitch.app/Contents/Resources/Assets.car
           test -f build/PirateSwitch.app/Contents/Resources/AppIcon.icns
+          test "$(lipo -archs build/PirateSwitch.app/Contents/MacOS/PirateSwitch)" = arm64
 
       - name: Render icon previews
         run: |

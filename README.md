@@ -36,7 +36,7 @@ Notes:
 
 ## Install
 
-Requires macOS 13+ and Xcode. With Xcode 26 or later selected (`xcode-select -p`), the app gets the Liquid Glass icon; otherwise it gets a flat version of the same icon.
+Requires an Apple Silicon Mac with macOS 13+, and Xcode. With Xcode 26 or later selected (`xcode-select -p`), the app gets the Liquid Glass icon; otherwise it gets a flat version of the same icon.
 
 ```sh
 scripts/build-app.sh --install
