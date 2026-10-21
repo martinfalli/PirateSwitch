@@ -18,12 +18,28 @@ enum Transmission {
 
     static var isRunning: Bool { !instances.isEmpty }
 
-    /// Kills Transmission immediately. A polite quit can stall on its
-    /// "quit with active transfers?" dialog, which would defeat a kill switch.
-    static func stop() {
+    /// Suspends every thread of Transmission (SIGSTOP): instant, and it keeps
+    /// all its state. Its window stops responding until it's resumed.
+    static func freeze() {
+        for app in instances { kill(app.processIdentifier, SIGSTOP) }
+    }
+
+    static func resume() {
+        for app in instances { kill(app.processIdentifier, SIGCONT) }
+    }
+
+    /// `force` kills immediately. Otherwise Transmission quits normally and
+    /// saves its state, but is killed if it's still around after 10 seconds
+    /// (e.g. stuck on its "quit with active transfers?" dialog).
+    static func quit(force: Bool) {
         for app in instances {
-            if !app.forceTerminate() {
+            if force {
                 kill(app.processIdentifier, SIGKILL)
+                continue
+            }
+            app.terminate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                if !app.isTerminated { kill(app.processIdentifier, SIGKILL) }
             }
         }
     }

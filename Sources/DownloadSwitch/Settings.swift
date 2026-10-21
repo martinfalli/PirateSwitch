@@ -8,7 +8,7 @@ struct Settings {
     init() {
         defaults.register(defaults: [
             "enabled": true,
-            "reopenOnReconnect": true,
+            "freezeWhileDown": true,
         ])
     }
 
@@ -17,9 +17,9 @@ struct Settings {
         nonmutating set { defaults.set(newValue, forKey: "enabled") }
     }
 
-    var reopenOnReconnect: Bool {
-        get { defaults.bool(forKey: "reopenOnReconnect") }
-        nonmutating set { defaults.set(newValue, forKey: "reopenOnReconnect") }
+    var freezeWhileDown: Bool {
+        get { defaults.bool(forKey: "freezeWhileDown") }
+        nonmutating set { defaults.set(newValue, forKey: "freezeWhileDown") }
     }
 
     var vpnSelection: VPNSelection {

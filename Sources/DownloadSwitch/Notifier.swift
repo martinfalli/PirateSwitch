@@ -26,14 +26,12 @@ enum Notifier {
 
     private static func text(for event: Event) -> (String, String) {
         switch event {
-        case .vpnDropped:
-            return ("VPN disconnected", "Transmission was stopped so nothing downloads outside the VPN.")
-        case .launchBlocked:
-            return ("Transmission blocked", "Connect to your VPN first. Transmission can't run without it.")
+        case .frozen:
+            return ("VPN down: Transmission frozen", "It can't send or receive anything until the VPN is back.")
+        case .resumed(let ip):
+            return ("VPN back: Transmission resumed", "Bound to \(ip).")
         case .rebinding(let ip):
-            return ("Rebinding Transmission", "Restarting Transmission so it only uses the VPN (\(ip)).")
-        case .reopened(let ip):
-            return ("VPN connected", "Transmission was reopened, bound to \(ip).")
+            return ("Restarting Transmission", "Binding it to the VPN address \(ip).")
         }
     }
 }

@@ -19,10 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let pathMonitor = NWPathMonitor()
     private var engine: KillSwitchEngine!
     private var timer: Timer?
+    private var appsObservation: NSKeyValueObservation?
 
     private var interfaces: [NetworkInterface] = []
     private var vpn: VPNStatus?
     private var iconSymbol = ""
+    private var poweringOff = false
 
     // MARK: - Lifecycle
 
@@ -36,17 +38,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         statusItem.menu = menu
 
-        // React instantly to Transmission starting and to network changes...
-        let workspace = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didLaunchApplicationNotification,
-                     NSWorkspace.didTerminateApplicationNotification,
-                     NSWorkspace.didWakeNotification] {
-            workspace.addObserver(self, selector: #selector(tick(_:)), name: name, object: nil)
-        }
+        // React instantly to network changes and to apps starting. The running
+        // apps list changes as soon as a process registers, before it has
+        // finished launching, so Transmission is caught early.
         pathMonitor.pathUpdateHandler = { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
         }
         pathMonitor.start(queue: DispatchQueue(label: "DownloadSwitch.path"))
+        appsObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.refresh() }
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(tick(_:)), name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(willPowerOff(_:)),
+                              name: NSWorkspace.willPowerOffNotification, object: nil)
 
         // ...and poll every second as a safety net.
         let timer = Timer(timeInterval: 1, target: self, selector: #selector(tick(_:)), userInfo: nil, repeats: true)
@@ -54,6 +59,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.timer = timer
 
         refresh()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Don't leave Transmission frozen with nobody to resume it. Its binding
+        // stays, so it still can't use anything but the VPN.
+        if engine.frozen && !poweringOff { Transmission.resume() }
+    }
+
+    /// A frozen Transmission can't answer the logout/shutdown request. Resumed,
+    /// it would look up tracker names outside the VPN as it quits, so kill it.
+    @objc private func willPowerOff(_ notification: Notification) {
+        poweringOff = true
+        if engine.frozen { Transmission.quit(force: true) }
     }
 
     @objc private func tick(_ sender: Any?) {
@@ -69,11 +87,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let snapshot = Snapshot(enabled: settings.enabled,
                                 vpn: vpn,
                                 transmissionRunning: Transmission.isRunning,
-                                reopenOnReconnect: settings.reopenOnReconnect)
+                                freezeWhileDown: settings.freezeWhileDown)
         for action in engine.update(snapshot) {
             switch action {
             case .writeBinding(let binding): TransmissionPreferences.write(binding)
-            case .stopTransmission: Transmission.stop()
+            case .freezeTransmission: Transmission.freeze()
+            case .resumeTransmission: Transmission.resume()
+            case .quitTransmission(let force): Transmission.quit(force: force)
             case .launchTransmission: Transmission.launch()
             case .notify(let event): Notifier.post(event)
             }
@@ -86,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var iconState: (symbol: String, description: String) {
         if !settings.enabled { return ("shield.slash", "Kill switch off") }
         if vpn != nil { return ("lock.shield", "VPN connected") }
-        return ("xmark.shield", "VPN down, Transmission blocked")
+        return ("xmark.shield", "VPN down, Transmission cut off")
     }
 
     private func updateIcon() {
@@ -117,14 +137,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(item("Kill Switch", #selector(toggleEnabled), checked: settings.enabled))
-        menu.addItem(item("Reopen Transmission When VPN Reconnects", #selector(toggleReopen),
-                          checked: settings.reopenOnReconnect))
+        menu.addItem(item("Freeze Transmission While VPN Is Down", #selector(toggleFreeze),
+                          checked: settings.freezeWhileDown))
         menu.addItem(interfaceMenu())
         menu.addItem(.separator())
 
-        let open = item(vpn == nil && settings.enabled ? "Open Transmission (needs VPN)" : "Open Transmission",
-                        #selector(openTransmission))
-        open.isEnabled = Transmission.isInstalled && (vpn != nil || !settings.enabled)
+        let open = item("Open Transmission", #selector(openTransmission))
+        open.isEnabled = Transmission.isInstalled
         menu.addItem(open)
         menu.addItem(item("Launch at Login", #selector(toggleLaunchAtLogin),
                           checked: SMAppService.mainApp.status == .enabled))
@@ -139,12 +158,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var transmissionStatusText: String {
         guard Transmission.isInstalled else { return "Transmission: not installed" }
-        if Transmission.isRunning {
-            guard settings.enabled else { return "Transmission: running (unprotected)" }
-            return engine.isBound(to: vpn) ? "Transmission: running, VPN only" : "Transmission: stopping…"
-        }
-        if settings.enabled && vpn == nil { return "Transmission: blocked until VPN connects" }
-        return "Transmission: not running"
+        guard Transmission.isRunning else { return "Transmission: not running" }
+        guard settings.enabled else { return "Transmission: running, kill switch off" }
+        if engine.isBound(to: vpn) { return "Transmission: VPN only" }
+        if vpn == nil { return engine.frozen ? "Transmission: frozen until VPN is back" : "Transmission: cut off until VPN is back" }
+        return "Transmission: restarting to bind to VPN…"
     }
 
     private func interfaceMenu() -> NSMenuItem {
@@ -152,9 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         submenu.autoenablesItems = false
         let selection = settings.vpnSelection
 
-        let automatic = item("Automatic (whatever carries internet traffic)", #selector(selectInterface(_:)),
-                             checked: selection == .automatic)
-        submenu.addItem(automatic)
+        submenu.addItem(item("Automatic (whatever carries internet traffic)", #selector(selectInterface(_:)),
+                             checked: selection == .automatic))
         submenu.addItem(.separator())
 
         var rows = VPNDetector.candidates(in: interfaces).map { ($0.name, "\($0.name) (\($0.ipv4[0]))") }
@@ -195,8 +212,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
-    @objc private func toggleReopen() {
-        settings.reopenOnReconnect = !settings.reopenOnReconnect
+    @objc private func toggleFreeze() {
+        settings.freezeWhileDown = !settings.freezeWhileDown
+        refresh()
     }
 
     @objc private func selectInterface(_ sender: NSMenuItem) {

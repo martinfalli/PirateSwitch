@@ -25,12 +25,10 @@ enum SystemNetwork {
                 result.append(NetworkInterface(name: name, isUp: isUp))
             }
 
-            guard let addr = entry.pointee.ifa_addr, let host = numericHost(addr) else { continue }
-            switch Int32(addr.pointee.sa_family) {
-            case AF_INET: result[i].ipv4.append(host)
-            case AF_INET6: result[i].ipv6.append(host)
-            default: break
-            }
+            guard let addr = entry.pointee.ifa_addr, Int32(addr.pointee.sa_family) == AF_INET,
+                  let host = numericHost(addr)
+            else { continue }
+            result[i].ipv4.append(host)
         }
         return result
     }
@@ -75,8 +73,6 @@ enum SystemNetwork {
         guard getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count),
                           nil, 0, NI_NUMERICHOST) == 0
         else { return nil }
-        // Drop the zone suffix of link-local IPv6 ("fe80::1%utun0").
-        let string = String(cString: host)
-        return string.split(separator: "%", maxSplits: 1).first.map(String.init) ?? string
+        return String(cString: host)
     }
 }

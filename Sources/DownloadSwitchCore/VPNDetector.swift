@@ -6,13 +6,11 @@ public struct NetworkInterface: Equatable {
     /// IFF_UP and IFF_RUNNING are both set.
     public var isUp: Bool
     public var ipv4: [String]
-    public var ipv6: [String]
 
-    public init(name: String, isUp: Bool, ipv4: [String] = [], ipv6: [String] = []) {
+    public init(name: String, isUp: Bool, ipv4: [String] = []) {
         self.name = name
         self.isUp = isUp
         self.ipv4 = ipv4
-        self.ipv6 = ipv6
     }
 
     /// Interfaces VPN clients create: utun (WireGuard, OpenVPN, most VPN apps),
@@ -21,16 +19,6 @@ public struct NetworkInterface: Equatable {
 
     public var isTunnel: Bool {
         Self.tunnelPrefixes.contains { name.hasPrefix($0) }
-    }
-
-    /// IPv6 addresses that can reach beyond the link (no link-local, no loopback).
-    public var routableIPv6: [String] {
-        ipv6.filter { addr in
-            let lower = addr.lowercased()
-            return !lower.hasPrefix("fe8") && !lower.hasPrefix("fe9")
-                && !lower.hasPrefix("fea") && !lower.hasPrefix("feb")
-                && lower != "::1"
-        }.sorted()
     }
 }
 
@@ -46,12 +34,10 @@ public enum VPNSelection: Equatable {
 public struct VPNStatus: Equatable {
     public var interface: String
     public var ipv4: String
-    public var ipv6: String?
 
-    public init(interface: String, ipv4: String, ipv6: String? = nil) {
+    public init(interface: String, ipv4: String) {
         self.interface = interface
         self.ipv4 = ipv4
-        self.ipv6 = ipv6
     }
 }
 
@@ -72,14 +58,14 @@ public enum VPNDetector {
                   let iface = interfaces.first(where: { $0.ipv4.contains(source) }),
                   iface.isUp, iface.isTunnel
             else { return nil }
-            return VPNStatus(interface: iface.name, ipv4: source, ipv6: iface.routableIPv6.first)
+            return VPNStatus(interface: iface.name, ipv4: source)
 
         case .interface(let name):
             guard let iface = interfaces.first(where: { $0.name == name }),
                   iface.isUp,
                   let ipv4 = iface.ipv4.first
             else { return nil }
-            return VPNStatus(interface: iface.name, ipv4: ipv4, ipv6: iface.routableIPv6.first)
+            return VPNStatus(interface: iface.name, ipv4: ipv4)
         }
     }
 

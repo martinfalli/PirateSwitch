@@ -1,30 +1,36 @@
 # Download Switch
 
-A small macOS menu bar app that acts as a VPN kill switch for [Transmission](https://transmissionbt.com).
-Transmission can only use the VPN. If the VPN drops, Transmission is stopped and can't be reopened until the VPN is back.
+A small macOS menu bar app that cuts [Transmission](https://transmissionbt.com) off the internet whenever your VPN is down. Only Transmission is affected, and it isn't quit: it just can't send or receive a single packet outside the VPN.
 
 ## How it works
 
-Two layers:
+**1. Kernel binding (the actual kill switch).** The app sets Transmission's hidden `BindAddressIPv4` / `BindAddressIPv6` preferences so every Transmission socket (peers, trackers, DHT, uTP, web seeds) is bound to the VPN's address. The macOS kernel enforces that binding:
 
-1. **Binding.** The app writes Transmission's hidden `BindAddressIPv4` / `BindAddressIPv6` preferences, so every Transmission socket (peers, trackers, DHT) is bound to the VPN's address. When the VPN goes away that address no longer exists, so nothing can connect. IPv6 is blocked unless the VPN has its own IPv6 address.
-2. **Watchdog.** Every second (and immediately on network changes or when Transmission launches) it checks the VPN:
-   - VPN down: Transmission is force-quit and blocked from starting.
-   - VPN back: Transmission is reopened (optional) with the new address.
-   - VPN address changed: Transmission is restarted so it binds to the new one.
+- While the VPN is up, packets from that address are only routed through the VPN interface.
+- The moment the VPN drops, its address disappears. TCP connections stop sending, UDP sends fail, new connections can't be made, and the IP layer drops anything with that source address (`EADDRNOTAVAIL`). There is no gap to wait out, because none of this depends on the app noticing the VPN drop.
 
-The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp`, `tun`, `wg`…) that currently carries your internet traffic. If that guesses wrong (e.g. you run several tunnels), pick the interface under **VPN Interface** in the menu.
+IPv6 is bound to an address that never exists, so Transmission can't use IPv6 at all and nothing can bypass the VPN that way.
+
+**2. Freeze.** Name lookups go through the system resolver, not Transmission's own sockets, so the binding can't stop them. When the VPN drops, the app freezes Transmission (`SIGSTOP`) within milliseconds, so it doesn't even look up a tracker name. Transmission keeps all its state. Its window just stops responding until the VPN is back, and then it's resumed where it was. You can turn this off under **Freeze Transmission While VPN Is Down** if you'd rather keep its window usable. Peers and trackers stay cut off by the binding either way.
+
+**Restarts.** Transmission reads its binding only at launch, so it's restarted in two cases:
+
+- The VPN comes back with a different address. Many WireGuard-based VPNs keep the same one.
+- Transmission was started without the binding: before Download Switch was installed, or while the VPN was down.
+
+The restart only happens with the VPN up, and the old Transmission can't reach anything in the meantime.
+
+The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp`, `tun`, `wg`…) that currently carries your internet traffic. If that guesses wrong, pick the interface under **VPN Interface** in the menu.
 
 | Icon | Meaning |
 | --- | --- |
-| Shield with lock | VPN connected, Transmission allowed |
-| Shield with ✕ | VPN down, Transmission blocked |
+| Shield with lock | VPN connected, Transmission bound to it |
+| Shield with ✕ | VPN down, Transmission cut off |
 | Shield with slash | Kill switch turned off |
 
 Notes:
-- Only Transmission is affected. The rest of your Mac keeps its normal internet.
-- Transmission is force-quit (a normal quit can hang on its "active transfers" dialog). It saves progress periodically, so at worst a few minutes of download is re-fetched.
-- Quitting Download Switch leaves the binding in place, so Transmission still only works with the same VPN address. Turn **Kill Switch** off first to give Transmission normal internet again.
+- Quitting Download Switch unfreezes Transmission, but the binding stays: it still only works over the same VPN address. Turn **Kill Switch** off to give Transmission normal internet again.
+- On logout/shutdown a frozen Transmission is killed rather than resumed, so it can't contact anything outside the VPN on its way out.
 
 ## Install
 
