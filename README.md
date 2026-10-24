@@ -13,12 +13,13 @@ IPv6 is bound to an address that never exists, so Transmission can't use IPv6 at
 
 **2. Freeze.** Name lookups go through the system resolver, not Transmission's own sockets, so the binding can't stop them. When the VPN drops, the app freezes Transmission (`SIGSTOP`) within milliseconds, so it doesn't even look up a tracker name. Transmission keeps all its state. Its window just stops responding until the VPN is back, and then it's resumed where it was. You can turn this off under **Freeze Transmission While VPN Is Down** if you'd rather keep its window usable. Peers and trackers stay cut off by the binding either way.
 
-**Restarts.** Transmission reads its binding only at launch, so it's restarted in two cases:
+**Restarts.** Transmission reads its binding only at launch, so it's restarted in three cases:
 
 - The VPN comes back with a different address. Many WireGuard-based VPNs keep the same one.
 - Transmission was started without the binding: before PirateSwitch was installed, or while the VPN was down.
+- You turn **Kill Switch** off, so it gets normal internet again.
 
-The restart only happens with the VPN up, and the old Transmission can't reach anything in the meantime.
+In the first two cases the restart only happens with the VPN up, and the old Transmission can't reach anything in the meantime.
 
 The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp`, `tun`, `wg`…) that currently carries your internet traffic. If that guesses wrong, pick the interface under **VPN Interface** in the menu.
 
@@ -31,7 +32,7 @@ The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp
 Under **Menu Bar Icon** you can switch between the flag with its pole and the flag alone.
 
 Notes:
-- Quitting PirateSwitch unfreezes Transmission, but the binding stays: it still only works over the same VPN address. Turn **Kill Switch** off to give Transmission normal internet again.
+- Quitting PirateSwitch unfreezes Transmission if it's bound: it still only works over the same VPN address. A frozen Transmission that isn't bound is quit instead, since nothing else would keep it off the internet. Turn **Kill Switch** off to give Transmission normal internet again.
 - On logout/shutdown a frozen Transmission is killed rather than resumed, so it can't contact anything outside the VPN on its way out.
 
 ## Install

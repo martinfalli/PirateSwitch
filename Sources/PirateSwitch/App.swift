@@ -63,16 +63,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Don't leave Transmission frozen with nobody to resume it. Its binding
-        // stays, so it still can't use anything but the VPN.
-        if engine.frozen && !poweringOff { Transmission.resume() }
+        // Don't leave Transmission frozen with nobody to resume it.
+        if !poweringOff { perform(engine.terminate(poweringOff: false)) }
     }
 
-    /// A frozen Transmission can't answer the logout/shutdown request. Resumed,
-    /// it would look up tracker names outside the VPN as it quits, so kill it.
     @objc private func willPowerOff(_ notification: Notification) {
         poweringOff = true
-        if engine.frozen { Transmission.quit(force: true) }
+        perform(engine.terminate(poweringOff: true))
     }
 
     @objc private func tick(_ sender: Any?) {
@@ -89,7 +86,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 vpn: vpn,
                                 transmissionRunning: Transmission.isRunning,
                                 freezeWhileDown: settings.freezeWhileDown)
-        for action in engine.update(snapshot) {
+        perform(engine.update(snapshot))
+        updateIcon()
+    }
+
+    private func perform(_ actions: [Action]) {
+        for action in actions {
             switch action {
             case .writeBinding(let binding): TransmissionPreferences.write(binding)
             case .freezeTransmission: Transmission.freeze()
@@ -99,7 +101,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .notify(let event): Notifier.post(event)
             }
         }
-        updateIcon()
     }
 
     // MARK: - Status item
@@ -173,7 +174,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var transmissionStatusText: String {
         guard Transmission.isInstalled else { return "Transmission: not installed" }
         guard Transmission.isRunning else { return "Transmission: not running" }
-        guard settings.enabled else { return "Transmission: running, kill switch off" }
+        guard settings.enabled else {
+            if engine.runningBinding == .unrestricted { return "Transmission: running, kill switch off" }
+            return "Transmission: restarting without the VPN binding…"
+        }
         if engine.isBound(to: vpn) { return "Transmission: VPN only" }
         if vpn == nil { return engine.frozen ? "Transmission: frozen until VPN is back" : "Transmission: cut off until VPN is back" }
         return "Transmission: restarting to bind to VPN…"

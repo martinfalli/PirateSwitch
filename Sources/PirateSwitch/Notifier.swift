@@ -32,6 +32,8 @@ enum Notifier {
             return ("VPN back: Transmission resumed", "Bound to \(ip).")
         case .rebinding(let ip):
             return ("Restarting Transmission", "Binding it to the VPN address \(ip).")
+        case .unbinding:
+            return ("Kill switch off: restarting Transmission", "So it can use the internet without the VPN.")
         }
     }
 }

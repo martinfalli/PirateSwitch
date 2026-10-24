@@ -59,6 +59,8 @@ public enum Event: Equatable {
     case resumed(ipv4: String)
     /// Transmission isn't bound to the current VPN address; restarting it.
     case rebinding(ipv4: String)
+    /// The kill switch was turned off; restarting Transmission without its binding.
+    case unbinding
 }
 
 public enum Action: Equatable {
@@ -114,11 +116,21 @@ public final class KillSwitchEngine {
         }
 
         guard snapshot.enabled else {
-            relaunchPending = false
             resume(&actions)
             if storedBinding != .unrestricted {
                 storedBinding = .unrestricted
                 actions.append(.writeBinding(.unrestricted))
+            }
+            if !snapshot.transmissionRunning {
+                if relaunchPending {
+                    relaunchPending = false
+                    actions.append(.launchTransmission)
+                }
+            } else if runningBinding != .unrestricted && !quitIssued {
+                // It keeps the binding it read at launch, so it would stay cut
+                // off. Restart it so it picks up normal internet.
+                actions.append(.notify(.unbinding))
+                quit(force: false, &actions)
             }
             return actions
         }
@@ -180,6 +192,23 @@ public final class KillSwitchEngine {
             }
         }
         return actions
+    }
+
+    /// This app is quitting, so nobody will be left to resume a frozen
+    /// Transmission. `poweringOff`: logout or shutdown is under way.
+    public func terminate(poweringOff: Bool) -> [Action] {
+        guard frozen else { return [] }
+        // Bound, it can still only use the VPN address. Not on logout/shutdown:
+        // frozen it can't answer the quit request, and resumed it would look up
+        // tracker names outside the VPN on its way out.
+        if !poweringOff, runningBinding?.isRestricted ?? false {
+            var actions: [Action] = []
+            resume(&actions)
+            return actions
+        }
+        // Unbound, nothing else would keep it off the internet. Not through
+        // quit(), which would reopen it.
+        return [.quitTransmission(force: true)]
     }
 
     private func resume(_ actions: inout [Action]) {

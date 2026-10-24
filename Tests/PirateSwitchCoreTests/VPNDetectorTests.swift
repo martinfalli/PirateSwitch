@@ -1,49 +1,49 @@
-import XCTest
+import Testing
 @testable import PirateSwitchCore
 
-final class VPNDetectorTests: XCTestCase {
+struct VPNDetectorTests {
     let wifi = NetworkInterface(name: "en0", isUp: true, ipv4: ["192.168.1.20"])
     let wireguard = NetworkInterface(name: "utun4", isUp: true, ipv4: ["10.64.0.2"])
     // macOS keeps several utun interfaces around with no IPv4 address.
     let systemTunnel = NetworkInterface(name: "utun0", isUp: true)
 
-    func testAutomaticDetectsTunnelCarryingInternetTraffic() {
+    @Test func automaticDetectsTunnelCarryingInternetTraffic() {
         let vpn = VPNDetector.detect(interfaces: [wifi, systemTunnel, wireguard], routeSourceIPv4: "10.64.0.2", selection: .automatic)
-        XCTAssertEqual(vpn, VPNStatus(interface: "utun4", ipv4: "10.64.0.2"))
+        #expect(vpn == VPNStatus(interface: "utun4", ipv4: "10.64.0.2"))
     }
 
-    func testAutomaticIgnoresTunnelWhenTrafficGoesOverWiFi() {
+    @Test func automaticIgnoresTunnelWhenTrafficGoesOverWiFi() {
         // e.g. Tailscale without an exit node: the tunnel exists but isn't the route.
         let vpn = VPNDetector.detect(interfaces: [wifi, wireguard], routeSourceIPv4: "192.168.1.20", selection: .automatic)
-        XCTAssertNil(vpn)
+        #expect(vpn == nil)
     }
 
-    func testAutomaticWithNoRoute() {
-        XCTAssertNil(VPNDetector.detect(interfaces: [wifi, wireguard], routeSourceIPv4: nil, selection: .automatic))
+    @Test func automaticWithNoRoute() {
+        #expect(VPNDetector.detect(interfaces: [wifi, wireguard], routeSourceIPv4: nil, selection: .automatic) == nil)
     }
 
-    func testAutomaticIgnoresDownTunnel() {
+    @Test func automaticIgnoresDownTunnel() {
         var down = wireguard
         down.isUp = false
-        XCTAssertNil(VPNDetector.detect(interfaces: [wifi, down], routeSourceIPv4: "10.64.0.2", selection: .automatic))
+        #expect(VPNDetector.detect(interfaces: [wifi, down], routeSourceIPv4: "10.64.0.2", selection: .automatic) == nil)
     }
 
-    func testBuiltInIKEv2() {
+    @Test func builtInIKEv2() {
         let ipsec = NetworkInterface(name: "ipsec0", isUp: true, ipv4: ["172.16.5.9"])
         let vpn = VPNDetector.detect(interfaces: [wifi, ipsec], routeSourceIPv4: "172.16.5.9", selection: .automatic)
-        XCTAssertEqual(vpn, VPNStatus(interface: "ipsec0", ipv4: "172.16.5.9"))
+        #expect(vpn == VPNStatus(interface: "ipsec0", ipv4: "172.16.5.9"))
     }
 
-    func testPinnedInterface() {
+    @Test func pinnedInterface() {
         let vpn = VPNDetector.detect(interfaces: [wifi, wireguard], routeSourceIPv4: "192.168.1.20", selection: .interface("utun4"))
-        XCTAssertEqual(vpn?.ipv4, "10.64.0.2")
+        #expect(vpn?.ipv4 == "10.64.0.2")
     }
 
-    func testPinnedInterfaceMissing() {
-        XCTAssertNil(VPNDetector.detect(interfaces: [wifi], routeSourceIPv4: "192.168.1.20", selection: .interface("utun4")))
+    @Test func pinnedInterfaceMissing() {
+        #expect(VPNDetector.detect(interfaces: [wifi], routeSourceIPv4: "192.168.1.20", selection: .interface("utun4")) == nil)
     }
 
-    func testCandidatesSkipSystemTunnels() {
-        XCTAssertEqual(VPNDetector.candidates(in: [wifi, systemTunnel, wireguard]).map(\.name), ["utun4"])
+    @Test func candidatesSkipSystemTunnels() {
+        #expect(VPNDetector.candidates(in: [wifi, systemTunnel, wireguard]).map(\.name) == ["utun4"])
     }
 }
