@@ -15,9 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let settings = Settings()
     private let keepAwake = KeepAwake()
+    private let eventLog = EventLog()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let pathMonitor = NWPathMonitor()
+    private var physicalPathMonitor: NWPathMonitor?
     private var engine: KillSwitchEngine!
     private var timer: Timer?
     private var appsObservation: NSKeyValueObservation?
@@ -25,6 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var interfaces: [NetworkInterface] = []
     private var vpn: VPNStatus?
     private var poweringOff = false
+    /// When the Mac said it's going to sleep, on a clock that stops while it sleeps.
+    private var sleptAt: UInt64?
+    private var pathIsMetered = false
+    private var physicalPathIsMetered = false
+    private var bindingCheck: BindingCheck?
+    /// Connections outside the VPN already notified about, while Transmission runs.
+    private var reportedOutsideVPN: Set<String> = []
 
     private var iconCache: [String: NSImage] = [:]
 
@@ -35,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                   transmissionRunning: Transmission.isRunning)
         Notifier.requestAuthorization()
         enableLaunchAtLoginOnFirstRun()
+        eventLog.add("PirateSwitch started")
 
         menu.delegate = self
         menu.autoenablesItems = false
@@ -43,15 +53,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // React instantly to network changes and to apps starting. The running
         // apps list changes as soon as a process registers, before it has
         // finished launching, so Transmission is caught early.
-        pathMonitor.pathUpdateHandler = { [weak self] _ in
-            DispatchQueue.main.async { self?.refresh() }
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let metered = path.isExpensive || path.isConstrained
+            DispatchQueue.main.async {
+                self?.pathIsMetered = metered
+                self?.refresh()
+            }
         }
         pathMonitor.start(queue: DispatchQueue(label: "PirateSwitch.path"))
+        // Some VPNs hide that the network underneath is a hotspot, so also
+        // watch the path that leaves out tunnels.
+        if #available(macOS 14, *) {
+            let monitor = NWPathMonitor(prohibitedInterfaceTypes: [.other])
+            monitor.pathUpdateHandler = { [weak self] path in
+                let metered = path.isExpensive || path.isConstrained
+                DispatchQueue.main.async {
+                    self?.physicalPathIsMetered = metered
+                    self?.refresh()
+                }
+            }
+            monitor.start(queue: DispatchQueue(label: "PirateSwitch.physicalPath"))
+            physicalPathMonitor = monitor
+        }
         appsObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
             DispatchQueue.main.async { self?.refresh() }
         }
         let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(self, selector: #selector(tick(_:)), name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(willSleep(_:)), name: NSWorkspace.willSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(didWake(_:)), name: NSWorkspace.didWakeNotification, object: nil)
         workspace.addObserver(self, selector: #selector(willPowerOff(_:)),
                               name: NSWorkspace.willPowerOffNotification, object: nil)
 
@@ -64,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        eventLog.add("PirateSwitch quit")
         // Don't leave Transmission frozen with nobody to resume it.
         if !poweringOff { perform(engine.terminate(poweringOff: false)) }
     }
@@ -73,23 +103,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         perform(engine.terminate(poweringOff: true))
     }
 
+    @objc private func willSleep(_ notification: Notification) {
+        sleptAt = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        eventLog.add("Mac went to sleep")
+        refresh()
+    }
+
+    @objc private func didWake(_ notification: Notification) {
+        sleptAt = nil
+        eventLog.add("Mac woke up")
+        refresh()
+    }
+
     @objc private func tick(_ sender: Any?) {
         refresh()
     }
 
+    private var onMeteredNetwork: Bool { pathIsMetered || physicalPathIsMetered }
+
     private func refresh() {
+        // That clock stops during sleep. If it ran on for a minute, the sleep
+        // never happened, so don't wait for a wake that won't come.
+        if let sleptAt, clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - sleptAt > 60_000_000_000 {
+            self.sleptAt = nil
+        }
+
         interfaces = SystemNetwork.interfaces()
+        let previousVPN = vpn
         vpn = VPNDetector.detect(interfaces: interfaces,
                                  routeSourceIPv4: SystemNetwork.routeSourceIPv4(),
                                  selection: settings.vpnSelection)
+        if vpn != previousVPN {
+            eventLog.add(vpn.map { "VPN connected (\($0.interface), \($0.ipv4))" } ?? "VPN disconnected")
+        }
 
+        let transmissionRunning = Transmission.isRunning
         let snapshot = Snapshot(enabled: settings.enabled,
                                 vpn: vpn,
-                                transmissionRunning: Transmission.isRunning,
-                                freezeWhileDown: settings.freezeWhileDown)
+                                transmissionRunning: transmissionRunning,
+                                freezeWhileDown: settings.freezeWhileDown,
+                                meteredNetwork: settings.freezeOnMeteredNetwork && onMeteredNetwork,
+                                sleeping: sleptAt != nil)
         perform(engine.update(snapshot))
+        checkBinding(transmissionRunning: transmissionRunning)
         // So downloads keep going while you're away from the Mac.
         keepAwake.isOn = settings.enabled && settings.keepAwake && vpn != nil
+            && transmissionRunning && !engine.frozen
         updateIcon()
     }
 
@@ -101,9 +160,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .resumeTransmission: Transmission.resume()
             case .quitTransmission(let force): Transmission.quit(force: force)
             case .launchTransmission: Transmission.launch()
-            case .notify(let event): Notifier.post(event)
+            case .notify(let event):
+                Notifier.post(event)
+                eventLog.add(Notifier.text(for: event).title)
             }
         }
+    }
+
+    /// Confirms from Transmission's open sockets that it really only uses the
+    /// VPN, and warns about any connection that doesn't.
+    private func checkBinding(transmissionRunning: Bool) {
+        if !transmissionRunning { reportedOutsideVPN = [] }
+        guard settings.enabled, let vpn, engine.isBound(to: vpn) else {
+            bindingCheck = nil
+            return
+        }
+        let sockets = Transmission.processIdentifiers.flatMap(SystemNetwork.sockets(pid:))
+        let check = BindingCheck(sockets: sockets, vpnIPv4: vpn.ipv4)
+        bindingCheck = check
+
+        // Once per destination, not for every new local port.
+        let new = check.outsideVPN.filter { socket in
+            let key = "\(socket.kind) \(socket.remoteAddress ?? socket.localAddress):\(socket.remoteAddress == nil ? socket.localPort : socket.remotePort)"
+            return reportedOutsideVPN.insert(key).inserted
+        }
+        guard let first = new.first else { return }
+        for socket in new { eventLog.add("Connection outside the VPN: \(socket.description)") }
+        Notifier.postOutsideVPN(first, count: new.count)
     }
 
     // MARK: - Status item
@@ -127,7 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !settings.enabled {
             description = "Kill switch off"
         } else if vpn != nil {
-            description = "VPN connected"
+            description = bindingCheck?.outsideVPN.isEmpty == false
+                ? "VPN connected, but Transmission has connections outside it" : "VPN connected"
         } else {
             description = "VPN down, Transmission cut off"
         }
@@ -151,17 +235,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(label(vpnStatusText))
         menu.addItem(label(transmissionStatusText))
+        for socket in bindingCheck?.outsideVPN.prefix(5) ?? [] {
+            let row = label(socket.description)
+            row.indentationLevel = 1
+            menu.addItem(row)
+        }
         menu.addItem(.separator())
 
         menu.addItem(item("Kill Switch", #selector(toggleEnabled), checked: settings.enabled))
         menu.addItem(item("Freeze Transmission While VPN Is Down", #selector(toggleFreeze),
                           checked: settings.freezeWhileDown))
-        menu.addItem(item("Keep Mac Awake While VPN Is Up", #selector(toggleKeepAwake),
+        menu.addItem(item("Freeze Transmission on Hotspot or Low Data Mode", #selector(toggleFreezeOnMeteredNetwork),
+                          checked: settings.freezeOnMeteredNetwork))
+        menu.addItem(item("Keep Mac Awake While Downloading", #selector(toggleKeepAwake),
                           checked: settings.keepAwake))
         menu.addItem(interfaceMenu())
         menu.addItem(iconStyleMenu())
         menu.addItem(.separator())
 
+        menu.addItem(eventsMenu())
         let open = item("Open Transmission", #selector(openTransmission))
         open.isEnabled = Transmission.isInstalled
         menu.addItem(open)
@@ -183,9 +275,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if engine.runningBinding == .unrestricted { return "Transmission: running, kill switch off" }
             return "Transmission: restarting without the VPN binding…"
         }
-        if engine.isBound(to: vpn) { return "Transmission: VPN only" }
+        if engine.frozen && settings.freezeOnMeteredNetwork && onMeteredNetwork {
+            return "Transmission: frozen on a hotspot or Low Data Mode network"
+        }
+        if engine.isBound(to: vpn) {
+            guard let bindingCheck, bindingCheck.checked > 0 else { return "Transmission: VPN only" }
+            let outside = bindingCheck.outsideVPN.count
+            if outside > 0 { return "Transmission: \(connections(outside)) outside the VPN" }
+            return "Transmission: VPN only (\(connections(bindingCheck.checked)) checked)"
+        }
         if vpn == nil { return engine.frozen ? "Transmission: frozen until VPN is back" : "Transmission: cut off until VPN is back" }
         return "Transmission: restarting to bind to VPN…"
+    }
+
+    private func connections(_ count: Int) -> String {
+        count == 1 ? "1 connection" : "\(count) connections"
+    }
+
+    private func eventsMenu() -> NSMenuItem {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        let entries = eventLog.entries.suffix(20).reversed()
+        if entries.isEmpty {
+            submenu.addItem(label("No events yet"))
+        }
+        for entry in entries {
+            let time = Calendar.current.isDateInToday(entry.date)
+                ? entry.date.formatted(date: .omitted, time: .shortened)
+                : entry.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+            submenu.addItem(label("\(time)   \(entry.text)"))
+        }
+        if !entries.isEmpty {
+            submenu.addItem(.separator())
+            submenu.addItem(item("Clear", #selector(clearEvents)))
+        }
+
+        let parent = NSMenuItem(title: "Recent Events", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
     }
 
     private func interfaceMenu() -> NSMenuItem {
@@ -255,9 +382,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
+    @objc private func toggleFreezeOnMeteredNetwork() {
+        settings.freezeOnMeteredNetwork = !settings.freezeOnMeteredNetwork
+        refresh()
+    }
+
     @objc private func toggleKeepAwake() {
         settings.keepAwake = !settings.keepAwake
         refresh()
+    }
+
+    @objc private func clearEvents() {
+        eventLog.clear()
     }
 
     @objc private func selectInterface(_ sender: NSMenuItem) {

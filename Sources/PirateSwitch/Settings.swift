@@ -14,6 +14,7 @@ struct Settings {
         defaults.register(defaults: [
             "enabled": true,
             "freezeWhileDown": true,
+            "freezeOnMeteredNetwork": true,
             "keepAwake": true,
         ])
     }
@@ -28,7 +29,13 @@ struct Settings {
         nonmutating set { defaults.set(newValue, forKey: "freezeWhileDown") }
     }
 
-    /// Stop the Mac from idle sleeping while the VPN is up.
+    /// Freeze Transmission on a Personal Hotspot or Low Data Mode network.
+    var freezeOnMeteredNetwork: Bool {
+        get { defaults.bool(forKey: "freezeOnMeteredNetwork") }
+        nonmutating set { defaults.set(newValue, forKey: "freezeOnMeteredNetwork") }
+    }
+
+    /// Stop the Mac from idle sleeping while Transmission can download.
     var keepAwake: Bool {
         get { defaults.bool(forKey: "keepAwake") }
         nonmutating set { defaults.set(newValue, forKey: "keepAwake") }

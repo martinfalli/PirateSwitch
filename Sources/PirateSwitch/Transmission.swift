@@ -18,6 +18,8 @@ enum Transmission {
 
     static var isRunning: Bool { !instances.isEmpty }
 
+    static var processIdentifiers: [pid_t] { instances.map(\.processIdentifier) }
+
     /// Suspends every thread of Transmission (SIGSTOP): instant, and it keeps
     /// all its state. Its window stops responding until it's resumed.
     static func freeze() {

@@ -5,8 +5,10 @@ struct KillSwitchEngineTests {
     let vpn = VPNStatus(interface: "utun4", ipv4: "10.64.0.2")
     let vpnBinding = Binding(ipv4: "10.64.0.2", ipv6: Binding.blockedIPv6)
 
-    private func snap(vpn: VPNStatus?, running: Bool, enabled: Bool = true, freeze: Bool = true) -> Snapshot {
-        Snapshot(enabled: enabled, vpn: vpn, transmissionRunning: running, freezeWhileDown: freeze)
+    private func snap(vpn: VPNStatus?, running: Bool, enabled: Bool = true, freeze: Bool = true,
+                      metered: Bool = false, sleeping: Bool = false) -> Snapshot {
+        Snapshot(enabled: enabled, vpn: vpn, transmissionRunning: running, freezeWhileDown: freeze,
+                 meteredNetwork: metered, sleeping: sleeping)
     }
 
     /// Engine with Transmission already running and bound to `vpn`.
@@ -140,6 +142,50 @@ struct KillSwitchEngineTests {
         let engine = boundEngine()
         #expect(engine.terminate(poweringOff: false) == [])
         #expect(engine.terminate(poweringOff: true) == [])
+    }
+
+    @Test func sleepFreezesQuietlyAndWakingResumes() {
+        let engine = boundEngine()
+        #expect(engine.update(snap(vpn: vpn, running: true, sleeping: true)) == [.freezeTransmission])
+        #expect(engine.update(snap(vpn: vpn, running: true, sleeping: true)) == [.freezeTransmission])
+        #expect(engine.update(snap(vpn: vpn, running: true)) == [.resumeTransmission])
+    }
+
+    @Test func wakingWithoutVPNKeepsItFrozen() {
+        let engine = boundEngine()
+        _ = engine.update(snap(vpn: vpn, running: true, sleeping: true))
+        #expect(engine.update(snap(vpn: nil, running: true))
+                == [.writeBinding(.blocked), .freezeTransmission, .notify(.frozen)])
+    }
+
+    @Test func sleepWithoutFreezingLeavesItRunning() {
+        let engine = boundEngine()
+        #expect(engine.update(snap(vpn: vpn, running: true, freeze: false, sleeping: true)) == [])
+    }
+
+    @Test func meteredNetworkFreezesAndLeavingItResumes() {
+        let engine = boundEngine()
+        #expect(engine.update(snap(vpn: vpn, running: true, metered: true))
+                == [.freezeTransmission, .notify(.frozenOnMeteredNetwork)])
+        #expect(engine.update(snap(vpn: vpn, running: true, metered: true)) == [.freezeTransmission])
+        #expect(engine.update(snap(vpn: vpn, running: true))
+                == [.resumeTransmission, .notify(.resumedOffMeteredNetwork)])
+    }
+
+    @Test func meteredNetworkPostponesRestart() {
+        let engine = KillSwitchEngine(storedBinding: .unrestricted, transmissionRunning: true)
+        #expect(engine.update(snap(vpn: vpn, running: true, metered: true))
+                == [.writeBinding(vpnBinding), .freezeTransmission, .notify(.frozenOnMeteredNetwork)])
+        #expect(engine.update(snap(vpn: vpn, running: true))
+                == [.notify(.rebinding(ipv4: "10.64.0.2")), .quitTransmission(force: true)])
+    }
+
+    @Test func relaunchWaitsUntilItWouldNotBeFrozen() {
+        let engine = KillSwitchEngine(storedBinding: .unrestricted, transmissionRunning: true)
+        _ = engine.update(snap(vpn: vpn, running: true))
+        #expect(engine.update(snap(vpn: vpn, running: false, sleeping: true)) == [])
+        #expect(engine.update(snap(vpn: vpn, running: false, metered: true)) == [])
+        #expect(engine.update(snap(vpn: vpn, running: false)) == [.launchTransmission])
     }
 
     @Test func ipv6IsAlwaysBlocked() {

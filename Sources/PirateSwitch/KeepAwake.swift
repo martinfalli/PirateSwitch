@@ -13,7 +13,7 @@ final class KeepAwake {
                 var id = IOPMAssertionID(0)
                 let result = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
                                                          IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                         "PirateSwitch: VPN is up" as CFString, &id)
+                                                         "PirateSwitch: Transmission is on the VPN" as CFString, &id)
                 if result == kIOReturnSuccess { assertion = id }
             } else if !newValue, let id = assertion {
                 IOPMAssertionRelease(id)

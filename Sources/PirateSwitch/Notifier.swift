@@ -13,6 +13,40 @@ enum Notifier {
 
     static func post(_ event: Event) {
         let (title, body) = text(for: event)
+        post(title: title, body: body)
+    }
+
+    /// `count`: how many new ones were found; `socket` is the first.
+    static func postOutsideVPN(_ socket: SocketInfo, count: Int) {
+        let title = count == 1 ? "Transmission connection outside the VPN"
+                               : "\(count) Transmission connections outside the VPN"
+        var body = socket.description
+        if let hint = socket.hint {
+            body += ", probably its \(hint). You can turn that off in Transmission's settings."
+        }
+        post(title: title, body: body)
+    }
+
+    /// The titles say what happened on their own, so they double as the Recent Events text.
+    static func text(for event: Event) -> (title: String, body: String) {
+        switch event {
+        case .frozen:
+            return ("VPN down: Transmission frozen", "It can't send or receive anything until the VPN is back.")
+        case .frozenOnMeteredNetwork:
+            return ("Hotspot or Low Data Mode: Transmission frozen",
+                    "So it doesn't use up mobile data. It resumes on another network.")
+        case .resumed(let ip):
+            return ("VPN back: Transmission resumed", "Bound to \(ip).")
+        case .resumedOffMeteredNetwork:
+            return ("Off the hotspot: Transmission resumed", "You're no longer on a hotspot or Low Data Mode network.")
+        case .rebinding(let ip):
+            return ("Restarting Transmission to bind it to \(ip)", "It only reads its VPN binding when it starts.")
+        case .unbinding:
+            return ("Kill switch off: restarting Transmission", "So it can use the internet without the VPN.")
+        }
+    }
+
+    private static func post(title: String, body: String) {
         guard available else {
             print("\(title): \(body)")
             return
@@ -22,18 +56,5 @@ enum Notifier {
         content.body = body
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
-    }
-
-    private static func text(for event: Event) -> (String, String) {
-        switch event {
-        case .frozen:
-            return ("VPN down: Transmission frozen", "It can't send or receive anything until the VPN is back.")
-        case .resumed(let ip):
-            return ("VPN back: Transmission resumed", "Bound to \(ip).")
-        case .rebinding(let ip):
-            return ("Restarting Transmission", "Binding it to the VPN address \(ip).")
-        case .unbinding:
-            return ("Kill switch off: restarting Transmission", "So it can use the internet without the VPN.")
-        }
     }
 }

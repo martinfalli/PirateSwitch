@@ -68,6 +68,69 @@ enum SystemNetwork {
         return String(cString: buffer)
     }
 
+    /// The TCP and UDP sockets a process has open, like `lsof -i -p <pid>`.
+    static func sockets(pid: pid_t) -> [SocketInfo] {
+        let size = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        guard size > 0 else { return [] }
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: Int(size) / MemoryLayout<proc_fdinfo>.stride)
+        let filled = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, size)
+        guard filled > 0 else { return [] }
+
+        var result: [SocketInfo] = []
+        for fd in fds.prefix(Int(filled) / MemoryLayout<proc_fdinfo>.stride)
+        where fd.proc_fdtype == UInt32(PROX_FDTYPE_SOCKET) {
+            var info = socket_fdinfo()
+            let infoSize = Int32(MemoryLayout<socket_fdinfo>.size)
+            guard proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDSOCKETINFO, &info, infoSize) == infoSize else { continue }
+
+            let kind: SocketInfo.Kind
+            let inet: in_sockinfo
+            switch Int(info.psi.soi_kind) {
+            case Int(SOCKINFO_TCP):
+                kind = .tcp
+                inet = info.psi.soi_proto.pri_tcp.tcpsi_ini
+            case Int(SOCKINFO_IN) where info.psi.soi_protocol == IPPROTO_UDP:
+                kind = .udp
+                inet = info.psi.soi_proto.pri_in
+            default:
+                continue
+            }
+
+            // A dual-stack IPv6 socket has both flags; one connected to an
+            // IPv4 peer has only the IPv4 one, with the address stored as IPv4.
+            let isIPv4 = inet.insi_vflag & UInt8(INI_IPV6) == 0
+            let remotePort = port(inet.insi_fport)
+            result.append(SocketInfo(
+                kind: kind,
+                localAddress: isIPv4 ? text(inet.insi_laddr.ina_46.i46a_addr4) : text(inet.insi_laddr.ina_6),
+                localPort: port(inet.insi_lport),
+                remoteAddress: remotePort == 0 ? nil
+                    : isIPv4 ? text(inet.insi_faddr.ina_46.i46a_addr4) : text(inet.insi_faddr.ina_6),
+                remotePort: remotePort
+            ))
+        }
+        return result
+    }
+
+    /// The kernel keeps ports in network byte order in the low 16 bits.
+    private static func port(_ raw: Int32) -> Int {
+        Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: raw)))
+    }
+
+    private static func text(_ address: in_addr) -> String {
+        withUnsafePointer(to: address) { ntop(AF_INET, $0) }
+    }
+
+    private static func text(_ address: in6_addr) -> String {
+        withUnsafePointer(to: address) { ntop(AF_INET6, $0) }
+    }
+
+    private static func ntop(_ family: Int32, _ address: UnsafeRawPointer) -> String {
+        var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        guard inet_ntop(family, address, &buffer, socklen_t(buffer.count)) != nil else { return "?" }
+        return String(cString: buffer)
+    }
+
     private static func numericHost(_ addr: UnsafePointer<sockaddr>) -> String? {
         var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
         guard getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count),

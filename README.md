@@ -11,7 +11,9 @@ A small macOS menu bar app that cuts [Transmission](https://transmissionbt.com) 
 
 IPv6 is bound to an address that never exists, so Transmission can't use IPv6 at all and nothing can bypass the VPN that way.
 
-**2. Freeze.** Name lookups go through the system resolver, not Transmission's own sockets, so the binding can't stop them. When the VPN drops, the app freezes Transmission (`SIGSTOP`) within milliseconds, so it doesn't even look up a tracker name. Transmission keeps all its state. Its window just stops responding until the VPN is back, and then it's resumed where it was. You can turn this off under **Freeze Transmission While VPN Is Down** if you'd rather keep its window usable. Peers and trackers stay cut off by the binding either way.
+**2. Freeze.** Name lookups go through the system resolver, not Transmission's own sockets, so the binding can't stop them. When the VPN drops, the app freezes Transmission (`SIGSTOP`) within milliseconds, so it doesn't even look up a tracker name. Transmission keeps all its state. Its window just stops responding until the VPN is back, and then it's resumed where it was. It's also frozen as the Mac goes to sleep, and after waking it's only resumed once the VPN is confirmed to be back, so it can't do anything in the moments before the VPN reconnects. You can turn this off under **Freeze Transmission While VPN Is Down** if you'd rather keep its window usable. Peers and trackers stay cut off by the binding either way.
+
+**Binding check.** Rather than trusting that Transmission honored its binding, the app looks at Transmission's open connections every second while the VPN is up, and the menu says how many it checked. If one isn't on the VPN address, the menu lists it and you get a notification. The usual culprits are Transmission's own port mapping (NAT-PMP or UPnP), which talks to your router, and local peer discovery, which announces your torrents on the local network. You can turn both off in Transmission's settings.
 
 **Restarts.** Transmission reads its binding only at launch, so it's restarted in three cases:
 
@@ -21,7 +23,9 @@ IPv6 is bound to an address that never exists, so Transmission can't use IPv6 at
 
 In the first two cases the restart only happens with the VPN up, and the old Transmission can't reach anything in the meantime.
 
-**Keep awake.** While the kill switch is on and the VPN is up, the Mac doesn't go to sleep on its own, like with Amphetamine or `caffeinate -i`, so downloads keep going while you're away. The display still turns off, and closing the lid or choosing **Sleep** still puts the Mac to sleep. Turn it off under **Keep Mac Awake While VPN Is Up**.
+**Hotspot.** On a Personal Hotspot or a network in Low Data Mode, Transmission is frozen so it doesn't use up mobile data, and resumed once you're on another network. Turn this off under **Freeze Transmission on Hotspot or Low Data Mode**.
+
+**Keep awake.** While Transmission is open and connected through the VPN, the Mac doesn't go to sleep on its own, like with Amphetamine or `caffeinate -i`, so downloads keep going while you're away. The display still turns off, and closing the lid or choosing **Sleep** still puts the Mac to sleep. Turn it off under **Keep Mac Awake While Downloading**.
 
 The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp`, `tun`, `wg`…) that currently carries your internet traffic. If that guesses wrong, pick the interface under **VPN Interface** in the menu.
 
@@ -32,6 +36,8 @@ The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp
 | Pirate flag, greyed out | Kill switch turned off |
 
 Under **Menu Bar Icon** you can switch between the flag with its pole and the flag alone.
+
+**Recent Events** in the menu lists the last VPN drops and reconnects, sleeps and wakes, and what happened to Transmission, with times. It's kept across restarts, so you can spot a VPN that keeps dropping.
 
 Notes:
 - Quitting PirateSwitch unfreezes Transmission if it's bound: it still only works over the same VPN address. A frozen Transmission that isn't bound is quit instead, since nothing else would keep it off the internet. Turn **Kill Switch** off to give Transmission normal internet again.

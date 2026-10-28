@@ -43,20 +43,34 @@ public struct Snapshot: Equatable {
     /// Freeze (SIGSTOP) Transmission while the VPN is down, so it can't even
     /// look up tracker names through the system resolver.
     public var freezeWhileDown: Bool
+    /// On a Personal Hotspot or Low Data Mode network, with freezing there
+    /// turned on: Transmission is frozen so it doesn't use up mobile data.
+    public var meteredNetwork: Bool
+    /// The Mac is going to sleep. With `freezeWhileDown`, Transmission is
+    /// frozen so that after waking it can't do anything until the VPN is
+    /// confirmed to be back.
+    public var sleeping: Bool
 
-    public init(enabled: Bool, vpn: VPNStatus?, transmissionRunning: Bool, freezeWhileDown: Bool) {
+    public init(enabled: Bool, vpn: VPNStatus?, transmissionRunning: Bool, freezeWhileDown: Bool,
+                meteredNetwork: Bool = false, sleeping: Bool = false) {
         self.enabled = enabled
         self.vpn = vpn
         self.transmissionRunning = transmissionRunning
         self.freezeWhileDown = freezeWhileDown
+        self.meteredNetwork = meteredNetwork
+        self.sleeping = sleeping
     }
 }
 
 public enum Event: Equatable {
     /// The VPN is down and Transmission was frozen.
     case frozen
+    /// The Mac is on a hotspot or Low Data Mode network and Transmission was frozen.
+    case frozenOnMeteredNetwork
     /// The VPN is back and Transmission was unfrozen.
     case resumed(ipv4: String)
+    /// The Mac left the hotspot or Low Data Mode network and Transmission was unfrozen.
+    case resumedOffMeteredNetwork
     /// Transmission isn't bound to the current VPN address; restarting it.
     case rebinding(ipv4: String)
     /// The kill switch was turned off; restarting Transmission without its binding.
@@ -84,7 +98,10 @@ public final class KillSwitchEngine {
     /// frozen by an earlier run of this app gets resumed.
     public private(set) var frozen: Bool
 
-    private var freezeNotified = false
+    private enum FreezeReason { case vpnDown, meteredNetwork }
+
+    /// What the user was last told Transmission is frozen for; nil if nothing.
+    private var notifiedFreeze: FreezeReason?
     private var quitIssued = false
     private var relaunchPending = false
 
@@ -111,7 +128,7 @@ public final class KillSwitchEngine {
         } else {
             runningBinding = nil
             frozen = false
-            freezeNotified = false
+            notifiedFreeze = nil
             quitIssued = false
         }
 
@@ -142,22 +159,29 @@ public final class KillSwitchEngine {
         }
 
         guard snapshot.transmissionRunning else {
-            if relaunchPending && snapshot.vpn != nil {
+            // Not while it would only be frozen right away.
+            if relaunchPending && snapshot.vpn != nil && !snapshot.sleeping && !snapshot.meteredNetwork {
                 relaunchPending = false
                 actions.append(.launchTransmission)
             }
             return actions
         }
 
+        if snapshot.sleeping && snapshot.freezeWhileDown {
+            // Quietly: after waking it's resumed if the VPN is still there.
+            freeze(nil, &actions)
+            return actions
+        }
+
+        if snapshot.meteredNetwork {
+            // Restarts wait too: it would only be frozen again.
+            freeze(.meteredNetwork, &actions)
+            return actions
+        }
+
         guard let vpn = snapshot.vpn else {
             if snapshot.freezeWhileDown {
-                // Re-sent every tick in case something else resumes it.
-                frozen = true
-                actions.append(.freezeTransmission)
-                if !freezeNotified {
-                    freezeNotified = true
-                    actions.append(.notify(.frozen))
-                }
+                freeze(.vpnDown, &actions)
             } else if !(runningBinding?.isRestricted ?? false) {
                 // Not frozen and not bound: nothing would stop it, so kill it.
                 quit(force: true, &actions)
@@ -169,9 +193,13 @@ public final class KillSwitchEngine {
 
         if runningBinding == desired {
             if frozen {
-                let wasNotified = freezeNotified
+                let notified = notifiedFreeze
                 resume(&actions)
-                if wasNotified { actions.append(.notify(.resumed(ipv4: vpn.ipv4))) }
+                switch notified {
+                case .vpnDown: actions.append(.notify(.resumed(ipv4: vpn.ipv4)))
+                case .meteredNetwork: actions.append(.notify(.resumedOffMeteredNetwork))
+                case nil: break
+                }
             }
             return actions
         }
@@ -211,10 +239,20 @@ public final class KillSwitchEngine {
         return [.quitTransmission(force: true)]
     }
 
+    /// `reason`: what to tell the user, once; nil to freeze quietly.
+    private func freeze(_ reason: FreezeReason?, _ actions: inout [Action]) {
+        // Re-sent every tick in case something else resumes it.
+        frozen = true
+        actions.append(.freezeTransmission)
+        guard let reason, reason != notifiedFreeze else { return }
+        notifiedFreeze = reason
+        actions.append(.notify(reason == .vpnDown ? .frozen : .frozenOnMeteredNetwork))
+    }
+
     private func resume(_ actions: inout [Action]) {
         guard frozen else { return }
         frozen = false
-        freezeNotified = false
+        notifiedFreeze = nil
         actions.append(.resumeTransmission)
     }
 
