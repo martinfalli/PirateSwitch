@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private let settings = Settings()
+    private let keepAwake = KeepAwake()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let pathMonitor = NWPathMonitor()
@@ -87,6 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 transmissionRunning: Transmission.isRunning,
                                 freezeWhileDown: settings.freezeWhileDown)
         perform(engine.update(snapshot))
+        // So downloads keep going while you're away from the Mac.
+        keepAwake.isOn = settings.enabled && settings.keepAwake && vpn != nil
         updateIcon()
     }
 
@@ -153,6 +156,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Kill Switch", #selector(toggleEnabled), checked: settings.enabled))
         menu.addItem(item("Freeze Transmission While VPN Is Down", #selector(toggleFreeze),
                           checked: settings.freezeWhileDown))
+        menu.addItem(item("Keep Mac Awake While VPN Is Up", #selector(toggleKeepAwake),
+                          checked: settings.keepAwake))
         menu.addItem(interfaceMenu())
         menu.addItem(iconStyleMenu())
         menu.addItem(.separator())
@@ -247,6 +252,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleFreeze() {
         settings.freezeWhileDown = !settings.freezeWhileDown
+        refresh()
+    }
+
+    @objc private func toggleKeepAwake() {
+        settings.keepAwake = !settings.keepAwake
         refresh()
     }
 

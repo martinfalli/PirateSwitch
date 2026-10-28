@@ -14,6 +14,7 @@ struct Settings {
         defaults.register(defaults: [
             "enabled": true,
             "freezeWhileDown": true,
+            "keepAwake": true,
         ])
     }
 
@@ -25,6 +26,12 @@ struct Settings {
     var freezeWhileDown: Bool {
         get { defaults.bool(forKey: "freezeWhileDown") }
         nonmutating set { defaults.set(newValue, forKey: "freezeWhileDown") }
+    }
+
+    /// Stop the Mac from idle sleeping while the VPN is up.
+    var keepAwake: Bool {
+        get { defaults.bool(forKey: "keepAwake") }
+        nonmutating set { defaults.set(newValue, forKey: "keepAwake") }
     }
 
     var menuBarIcon: MenuBarIconStyle {

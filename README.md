@@ -21,6 +21,8 @@ IPv6 is bound to an address that never exists, so Transmission can't use IPv6 at
 
 In the first two cases the restart only happens with the VPN up, and the old Transmission can't reach anything in the meantime.
 
+**Keep awake.** While the kill switch is on and the VPN is up, the Mac doesn't go to sleep on its own, like with Amphetamine or `caffeinate -i`, so downloads keep going while you're away. The display still turns off, and closing the lid or choosing **Sleep** still puts the Mac to sleep. Turn it off under **Keep Mac Awake While VPN Is Up**.
+
 The VPN is detected automatically as the tunnel interface (`utun`, `ipsec`, `ppp`, `tun`, `wg`…) that currently carries your internet traffic. If that guesses wrong, pick the interface under **VPN Interface** in the menu.
 
 | Menu bar icon | Meaning |
