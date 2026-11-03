@@ -185,7 +185,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return reportedOutsideVPN.insert(key).inserted
         }
         guard let first = new.first else { return }
-        for socket in new { eventLog.add("Connection outside the VPN: \(socket.description)") }
+        for socket in new {
+            let source = socket.source.map { " (\($0.name.lowercased()))" } ?? ""
+            eventLog.add("Connection outside the VPN: \(socket.description)\(source)")
+        }
         Notifier.postOutsideVPN(first, count: new.count)
     }
 
@@ -235,11 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(label(vpnStatusText))
         menu.addItem(label(transmissionStatusText))
-        for socket in bindingCheck?.outsideVPN.prefix(5) ?? [] {
-            let row = label(socket.description)
-            row.indentationLevel = 1
-            menu.addItem(row)
-        }
+        addOutsideVPNRows(to: menu)
         menu.addItem(.separator())
 
         menu.addItem(item("Kill Switch", #selector(toggleEnabled), checked: settings.enabled))
@@ -261,6 +260,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                           checked: SMAppService.mainApp.status == .enabled))
         menu.addItem(.separator())
         menu.addItem(item("Quit PirateSwitch", #selector(quit), key: "q"))
+    }
+
+    /// Each connection outside the VPN, grouped under what it is and how to
+    /// turn it off when it's one Transmission makes on its own.
+    private func addOutsideVPNRows(to menu: NSMenu) {
+        let shown = Array(bindingCheck?.outsideVPN.prefix(5) ?? [])
+        var sources: [SocketInfo.Source?] = []
+        for socket in shown where !sources.contains(socket.source) { sources.append(socket.source) }
+
+        for source in sources {
+            let indent = source == nil ? 1 : 2
+            if let source { menu.addItem(label(source.name, indent: 1)) }
+            for socket in shown where socket.source == source {
+                menu.addItem(label(socket.description, indent: indent))
+            }
+            if let source { menu.addItem(label(source.fix, indent: 2)) }
+        }
     }
 
     private var vpnStatusText: String {
@@ -357,9 +373,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return parent
     }
 
-    private func label(_ title: String) -> NSMenuItem {
+    private func label(_ title: String, indent: Int = 0) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
+        item.indentationLevel = indent
         return item
     }
 

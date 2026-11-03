@@ -21,8 +21,8 @@ enum Notifier {
         let title = count == 1 ? "Transmission connection outside the VPN"
                                : "\(count) Transmission connections outside the VPN"
         var body = socket.description
-        if let hint = socket.hint {
-            body += ", probably its \(hint). You can turn that off in Transmission's settings."
+        if let source = socket.source {
+            body = "\(source.name): \(body)\n\(source.fix)."
         }
         post(title: title, body: body)
     }

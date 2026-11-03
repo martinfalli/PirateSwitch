@@ -25,11 +25,32 @@ public struct SocketInfo: Equatable {
         return "\(kind.rawValue) \(localAddress) → \(Self.endpoint(remoteAddress, remotePort))"
     }
 
+    /// A connection Transmission makes on its own, outside the VPN, unless
+    /// turned off in its settings.
+    public enum Source: Equatable {
+        case portMapping, localPeerDiscovery
+
+        /// e.g. "Port mapping with your router".
+        public var name: String {
+            switch self {
+            case .portMapping: return "Port mapping with your router"
+            case .localPeerDiscovery: return "Local peer discovery"
+            }
+        }
+
+        public var fix: String {
+            switch self {
+            case .portMapping: return "Turn off “Automatically map port” in Transmission’s Network settings"
+            case .localPeerDiscovery: return "Turn off local peer discovery in Transmission’s Peers settings"
+            }
+        }
+    }
+
     /// What it probably is, for the connections Transmission makes on its own.
-    public var hint: String? {
+    public var source: Source? {
         let ports = [localPort, remotePort]
-        if ports.contains(5351) || ports.contains(1900) { return "port mapping (NAT-PMP or UPnP) with your router" }
-        if ports.contains(6771) { return "local peer discovery" }
+        if ports.contains(5351) || ports.contains(1900) { return .portMapping } // NAT-PMP, UPnP
+        if ports.contains(6771) { return .localPeerDiscovery }
         return nil
     }
 

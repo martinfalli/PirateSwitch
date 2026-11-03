@@ -35,12 +35,13 @@ struct BindingCheckTests {
         #expect(BindingCheck(sockets: [mapped], vpnIPv4: vpnIPv4).outsideVPN.isEmpty)
     }
 
-    @Test func descriptionsAndHints() {
+    @Test func descriptionsAndSources() {
         #expect(natpmp.description == "UDP 192.168.1.20 → 192.168.1.1:5351")
-        #expect(natpmp.hint == "port mapping (NAT-PMP or UPnP) with your router")
+        #expect(natpmp.source == .portMapping)
+        #expect(SocketInfo(kind: .udp, localAddress: "192.168.1.20", localPort: 1900).source == .portMapping)
         #expect(lpd.description == "UDP 0.0.0.0:6771")
-        #expect(lpd.hint == "local peer discovery")
+        #expect(lpd.source == .localPeerDiscovery)
         #expect(ipv6.description == "TCP 2001:db8::5 → [2001:db8::9]:443")
-        #expect(ipv6.hint == nil)
+        #expect(ipv6.source == nil)
     }
 }
