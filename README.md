@@ -76,4 +76,4 @@ swift run PirateSwitch   # run without bundling (no notifications, SF Symbol ico
 
 `Sources/PirateSwitchCore` holds the pure logic (VPN detection, kill switch state machine); `Sources/PirateSwitch` is the AppKit menu bar app.
 
-The artwork is generated from simple shapes by `Icon/generate.py` (`pip install shapely cairosvg pillow`): the Liquid Glass app icon layers in `Icon/AppIcon.icon`, the flat fallback `Resources/AppIcon.icns` and the menu bar templates `Resources/MenuBarFlag*.pdf`. Open `Icon/AppIcon.icon` in Icon Composer to tweak the glass effects.
+The artwork is generated from simple shapes by `Icon/generate.py` (`pip install shapely cairosvg pillow`): the Liquid Glass app icon layers in `Icon/AppIcon.icon`, the flat fallback `Resources/AppIcon.icns` and the menu bar templates `Resources/MenuBarFlag*.pdf`. Open `Icon/AppIcon.icon` in Icon Composer to tweak the glass effects. Its `icon.json` sets the colors: a black flag on white in light mode, white on black in dark mode. The flat fallback has only the dark version.
