@@ -159,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .freezeTransmission: Transmission.freeze()
             case .resumeTransmission: Transmission.resume()
             case .quitTransmission(let force): Transmission.quit(force: force)
+            case .askTransmissionToQuit: Transmission.askToQuit()
             case .launchTransmission: Transmission.launch()
             case .notify(let event):
                 Notifier.post(event)
@@ -256,6 +257,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let open = item("Open Transmission", #selector(openTransmission))
         open.isEnabled = Transmission.isInstalled
         menu.addItem(open)
+        let quitTransmission = item("Quit Transmission", #selector(quitTransmission))
+        quitTransmission.isEnabled = Transmission.isRunning
+        menu.addItem(quitTransmission)
         menu.addItem(item("Launch at Login", #selector(toggleLaunchAtLogin),
                           checked: SMAppService.mainApp.status == .enabled))
         menu.addItem(.separator())
@@ -428,6 +432,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openTransmission() {
         Transmission.launch()
+    }
+
+    @objc private func quitTransmission() {
+        perform(engine.quitRequested())
     }
 
     @objc private func toggleLaunchAtLogin() {

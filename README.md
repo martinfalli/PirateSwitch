@@ -42,6 +42,7 @@ Under **Menu Bar Icon** you can switch between the flag with its pole and the fl
 Notes:
 - Quitting PirateSwitch unfreezes Transmission if it's bound: it still only works over the same VPN address. A frozen Transmission that isn't bound is quit instead, since nothing else would keep it off the internet. Turn **Kill Switch** off to give Transmission normal internet again.
 - On logout/shutdown a frozen Transmission is killed rather than resumed, so it can't contact anything outside the VPN on its way out.
+- **Quit Transmission** in the menu quits it as its own Quit would, and it isn't reopened, even if it was being restarted. A frozen Transmission is killed instead, for the same reason as above.
 
 ## Install
 

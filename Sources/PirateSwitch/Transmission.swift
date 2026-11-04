@@ -46,6 +46,18 @@ enum Transmission {
         }
     }
 
+    /// Like choosing Quit in Transmission itself, so it's never killed. If it
+    /// hasn't quit after a second it's probably asking whether to quit with
+    /// active transfers, so it's brought to the front.
+    static func askToQuit() {
+        for app in instances {
+            app.terminate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                if !app.isTerminated { app.activate(options: []) }
+            }
+        }
+    }
+
     static func launch() {
         guard let url = appURL else { return }
         let configuration = NSWorkspace.OpenConfiguration()

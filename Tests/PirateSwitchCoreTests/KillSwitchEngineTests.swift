@@ -188,6 +188,31 @@ struct KillSwitchEngineTests {
         #expect(engine.update(snap(vpn: vpn, running: false)) == [.launchTransmission])
     }
 
+    @Test func quitFromTheMenuAsksTransmissionToQuit() {
+        let engine = boundEngine()
+        #expect(engine.quitRequested() == [.askTransmissionToQuit])
+        #expect(engine.update(snap(vpn: vpn, running: false)) == [])
+    }
+
+    @Test func quitFromTheMenuKillsFrozenTransmission() {
+        let engine = boundEngine()
+        _ = engine.update(snap(vpn: nil, running: true))
+        #expect(engine.quitRequested() == [.quitTransmission(force: true)])
+        // Not quit again while it's on its way out, nor reopened.
+        #expect(engine.update(snap(vpn: nil, running: true)) == [.freezeTransmission])
+        #expect(engine.update(snap(vpn: nil, running: false)) == [])
+        #expect(engine.update(snap(vpn: vpn, running: false)) == [.writeBinding(vpnBinding)])
+    }
+
+    @Test func quitFromTheMenuCancelsRestart() {
+        let engine = KillSwitchEngine(storedBinding: .unrestricted, transmissionRunning: true)
+        #expect(engine.update(snap(vpn: vpn, running: true))
+                == [.writeBinding(vpnBinding), .notify(.rebinding(ipv4: "10.64.0.2")), .quitTransmission(force: true)])
+        // Assumed frozen at startup, and already being killed.
+        #expect(engine.quitRequested() == [.quitTransmission(force: true)])
+        #expect(engine.update(snap(vpn: vpn, running: false)) == [])
+    }
+
     @Test func ipv6IsAlwaysBlocked() {
         #expect(Binding.vpn(vpn).ipv6 == Binding.blockedIPv6)
         #expect(Binding.vpn(vpn).isRestricted)

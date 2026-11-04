@@ -83,6 +83,9 @@ public enum Action: Equatable {
     case resumeTransmission
     /// `force`: kill now instead of a normal quit (which can take seconds).
     case quitTransmission(force: Bool)
+    /// Like choosing Quit in Transmission itself: it may ask first, and it
+    /// stays open if that's turned down.
+    case askTransmissionToQuit
     case launchTransmission
     case notify(Event)
 }
@@ -237,6 +240,19 @@ public final class KillSwitchEngine {
         // Unbound, nothing else would keep it off the internet. Not through
         // quit(), which would reopen it.
         return [.quitTransmission(force: true)]
+    }
+
+    /// The user chose Quit Transmission. It stays closed, even if a restart
+    /// was under way.
+    public func quitRequested() -> [Action] {
+        relaunchPending = false
+        // Frozen, it can't answer a quit request, and resumed it could look
+        // up tracker names outside the VPN on its way out.
+        if frozen {
+            quitIssued = true
+            return [.quitTransmission(force: true)]
+        }
+        return [.askTransmissionToQuit]
     }
 
     /// `reason`: what to tell the user, once; nil to freeze quietly.
