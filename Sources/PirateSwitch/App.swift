@@ -453,8 +453,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Asked twice so it can't happen by accident. Only from the menu: logout
+    /// and shutdown don't go through here.
     @objc private func quit() {
+        NSApp.activate(ignoringOtherApps: true)
+        guard confirmQuit("Quit PirateSwitch?",
+                          "Transmission stays bound to the VPN, but nothing will freeze it when the VPN drops "
+                          + "or restart it when the VPN's address changes."),
+              confirmQuit("Are you sure?",
+                          "Freezing on a hotspot, keeping the Mac awake and checking Transmission's connections "
+                          + "stop too, until you open PirateSwitch again.")
+        else { return }
         NSApp.terminate(nil)
+    }
+
+    /// Return keeps it running (the first button is the default); quitting
+    /// takes a click, so ⌘Q followed by Return twice doesn't quit.
+    private func confirmQuit(_ message: String, _ detail: String) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Keep Running")
+        alert.addButton(withTitle: "Quit").hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     /// A kill switch only helps if it's running, so start at login by default.
