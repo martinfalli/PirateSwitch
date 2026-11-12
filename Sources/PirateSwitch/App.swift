@@ -219,8 +219,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             description = "VPN down, Transmission cut off"
         }
-        button.toolTip = "PirateSwitch: \(description)"
-        button.setAccessibilityLabel(description)
+        // Only when it changes: this runs every second, and setting a tooltip
+        // re-creates its tracking area. Doing that while it's showing can leave
+        // the tooltip stuck to the cursor.
+        let toolTip = "PirateSwitch: \(description)"
+        if button.toolTip != toolTip { button.toolTip = toolTip }
+        if button.accessibilityLabel() != description { button.setAccessibilityLabel(description) }
 
         // Flag while protected, struck through while the VPN is down, greyed out when off.
         let image = menuBarIcon(settings.menuBarIcon, slashed: settings.enabled && vpn == nil)
